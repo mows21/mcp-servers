@@ -1,0 +1,131 @@
+version: '3.8'
+
+services:
+  cline-mcp:
+    build:
+      context: ./cline-mcp
+      dockerfile: Dockerfile
+    container_name: cline-mcp-server
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - cline-data:/app/data
+    environment:
+      - PORT=8080
+      - LOG_LEVEL=info
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - mcp-network
+
+  roo-mcp:
+    build:
+      context: ./roo-mcp
+      dockerfile: Dockerfile
+    container_name: roo-mcp-server
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    volumes:
+      - roo-snapshots:/app/snapshots
+    environment:
+      - PORT=8081
+      - SNAPSHOTS_DIR=/app/snapshots
+      - BROWSER_HEADLESS=true
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - mcp-network
+
+  claude-desktop-mcp:
+    build:
+      context: ./claude-desktop-mcp
+      dockerfile: Dockerfile
+    container_name: claude-desktop-mcp-server
+    restart: unless-stopped
+    ports:
+      - "8082:8082"
+    volumes:
+      - desktop-config:/root/.config
+      - desktop-files:/desktop
+      - documents:/documents
+      - downloads:/downloads
+    environment:
+      - PORT=8082
+      - DESKTOP_DIR=/desktop
+      - DOCUMENTS_DIR=/documents
+      - DOWNLOADS_DIR=/downloads
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - mcp-network
+
+  # Shared services
+  mcp-proxy:
+    image: traefik:v2.9
+    container_name: mcp-proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8180:8080"
+    volumes:
+      - ./traefik.yml:/traefik.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik-ssl:/ssl
+    networks:
+      - mcp-network
+
+  mcp-monitoring:
+    image: prom/prometheus:v2.40.0
+    container_name: mcp-monitoring
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - mcp-network
+
+  mcp-dashboard:
+    image: grafana/grafana:9.3.0
+    container_name: mcp-dashboard
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    networks:
+      - mcp-network
+
+networks:
+  mcp-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  cline-data:
+  roo-snapshots:
+  desktop-config:
+  desktop-files:
+  documents:
+  downloads:
+  traefik-ssl:
+  prometheus-data:
+  grafana-data:
